@@ -1,0 +1,216 @@
+name: Auto Release on Upstream Release
+
+on:
+  # 监听上游仓库的release事件
+  repository_dispatch:
+    types: [upstream-release]
+  # 也可以手动触发
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., 2024.8.3)'
+        required: true
+      draft:
+        description: 'Create as draft release'
+        type: boolean
+        default: false
+
+jobs:
+  # 检查是否需要构建
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Check release
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+  # 构建不同架构的二进制文件
+  build:
+    needs: check-release
+    if: needs.check-release.outputs.should_build == 'true'
+    strategy:
+      matrix:
+        include:
+          # Linux架构
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: amd64
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: "386"
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: arm64
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: arm
+            target_arm: "5"
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: arm
+            target_arm: "7"
+            package: deb
+          # MIPS架构
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mipsle
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mips
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mips64le
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mips64
+            package: deb
+          # 其他架构
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: ppc64le
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: s390x
+            package: deb
+          # Windows架构
+          - os: ubuntu-latest
+            target_os: windows
+            target_arch: amd64
+            package: binary
+          - os: ubuntu-latest
+            target_os: windows
+            target_arch: "386"
+            package: binary
+          # macOS架构
+          - os: macos-latest
+            target_os: darwin
+            target_arch: amd64
+            package: binary
+          - os: macos-latest
+            target_os: darwin
+            target_arch: arm64
+            package: binary
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-release.outputs.tag }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+        if: matrix.os == 'ubuntu-latest'
+
+      - name: Set environment variables
+        run: |
+          echo "TARGET_OS=${{ matrix.target_os }}" >> $GITHUB_ENV
+          echo "TARGET_ARCH=${{ matrix.target_arch }}" >> $GITHUB_ENV
+          echo "VERSION=${{ needs.check-release.outputs.tag }}" >> $GITHUB_ENV
+          if [ "${{ matrix.target_arm }}" != "" ]; then
+            echo "TARGET_ARM=${{ matrix.target_arm }}" >> $GITHUB_ENV
+          fi
+
+      - name: Build binary
+        run: |
+          make cloudflared
+          # 重命名二进制文件以便上传
+          if [ "${{ matrix.target_os }}" = "windows" ]; then
+            mv ./cloudflared.exe ./cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}.exe
+          else
+            mv ./cloudflared ./cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}
+          fi
+
+      - name: Build package
+        if: matrix.package == 'deb'
+        run: |
+          make cloudflared-deb
+          # 重命名deb包以便上传
+          mv cloudflared_${{ needs.check-release.outputs.tag }}_${{ matrix.target_arch }}.deb cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}.deb
+
+      - name: Build RPM package
+        if: matrix.package == 'rpm'
+        run: |
+          make cloudflared-rpm
+          # 重命名rpm包以便上传
+          RPMVERSION=$(echo ${{ needs.check-release.outputs.tag }} | sed -r 's/-/_/g')
+          mv cloudflared-$RPMVERSION-1.${{ matrix.target_arch }}.rpm cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}.rpm
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}${{ matrix.target_arm && format('-{0}', matrix.target_arm) || '' }}
+          path: |
+            cloudflared-${{ matrix.target_os }}-${{ matrix.target_arch }}*
+            *.deb
+            *.rpm
+
+  # 创建Release并上传资产
+  release:
+    needs: [check-release, build]
+    if: needs.check-release.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-release.outputs.tag }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.check-release.outputs.tag }}
+          release_name: Release ${{ needs.check-release.outputs.tag }}
+          draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+          prerelease: false
+
+      - name: Upload Release Assets
+        run: |
+          # 遍历所有下载的工件并上传到release
+          for dir in artifacts/*/; do
+            if [ -d "$dir" ]; then
+              asset_name=$(basename "$dir")
+              for file in "$dir"*; do
+                if [ -f "$file" ]; then
+                  echo "Uploading $file as $asset_name"
+                  gh release upload ${{ needs.check-release.outputs.tag }} "$file" --clobber
+                fi
+              done
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
