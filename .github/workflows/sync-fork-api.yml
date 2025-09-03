@@ -1,0 +1,58 @@
+name: Sync Fork with Upstream using API
+
+on:
+  # 当上游仓库发布release时触发
+  repository_dispatch:
+    types: [upstream-release]
+  # 也可以手动触发
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g., 2024.8.3)'
+        required: false
+
+jobs:
+  sync-fork:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # 获取所有历史记录
+
+      - name: Set up Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Sync fork with upstream using GitHub API
+        run: |
+          # 获取要同步的tag
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            TAG="${{ github.event.client_payload.tag }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            # 如果没有指定tag，则获取上游的最新tag
+            TAG=$(curl -s https://api.github.com/repos/cloudflare/cloudflared/releases/latest | jq -r '.tag_name')
+          fi
+          
+          echo "Syncing to tag: $TAG"
+          
+          # 使用GitHub API同步fork
+          curl -X PATCH \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/merge-upstream \
+            -d '{"branch":"master"}'
+          
+          # 获取上游仓库的commit SHA
+          UPSTREAM_SHA=$(curl -s https://api.github.com/repos/cloudflare/cloudflared/git/refs/tags/$TAG | jq -r '.object.sha')
+          
+          # 在fork仓库中创建相同的tag
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/git/refs \
+            -d '{"ref":"refs/tags/'$TAG'","sha":"'$UPSTREAM_SHA'"}'

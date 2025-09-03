@@ -21,6 +21,26 @@
 2. 创建Debian和RPM包
 3. 发布到GitHub Release
 
+### 3. 同步Fork (sync-fork.yml)
+
+这个工作流会在以下情况下触发：
+- 当上游仓库发布新的release时（通过upstream-monitor.yml触发）
+- 手动触发
+
+工作流会执行以下操作：
+1. 同步fork仓库与上游仓库的主分支
+2. 确保fork仓库与上游仓库保持一致
+
+### 4. 使用API同步Fork (sync-fork-api.yml)
+
+这个工作流会在以下情况下触发：
+- 当上游仓库发布新的release时（通过upstream-monitor.yml触发）
+- 手动触发
+
+工作流会执行以下操作：
+1. 使用GitHub API同步fork仓库与上游仓库
+2. 这种方法更加可靠，避免了git merge冲突
+
 ## 支持的架构
 
 ### Linux架构
@@ -29,8 +49,10 @@
 - arm64
 - arm (ARMv5)
 - armhf (ARMv7)
-- mipsle (MIPS little endian)
-- mips (MIPS big endian)
+- mipsle-softfloat (MIPS little endian softfloat)
+- mipsle-hardfloat (MIPS little endian hardfloat)
+- mips-softfloat (MIPS big endian softfloat)
+- mips-hardfloat (MIPS big endian hardfloat)
 - mips64le (MIPS64 little endian)
 - mips64 (MIPS64 big endian)
 - ppc64le (PowerPC 64-bit little endian)

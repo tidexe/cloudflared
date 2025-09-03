@@ -10,7 +10,7 @@ export CGO_ENABLED=0
 export ARTIFACT_DIR=artifacts/
 mkdir -p $ARTIFACT_DIR
 
-linuxArchs=("386" "amd64" "arm" "armhf" "arm64")
+linuxArchs=("386" "amd64" "arm" "armhf" "arm64" "mipsle-softfloat" "mipsle-hardfloat" "mips-softfloat" "mips-hardfloat" "mips64le" "mips64")
 export TARGET_OS=linux
 for arch in ${linuxArchs[@]}; do
     unset TARGET_ARM
@@ -26,6 +26,40 @@ for arch in ${linuxArchs[@]}; do
     if [[ $arch == armhf ]] ; then
         export TARGET_ARCH=arm
         export TARGET_ARM=7 
+    fi
+    
+    ## Support for mipsle softfloat builds
+    if [[ $arch == mipsle-softfloat ]] ; then
+        export TARGET_ARCH=mipsle
+        export TARGET_ARM=softfloat
+    fi
+    
+    ## Support for mipsle hardfloat builds
+    if [[ $arch == mipsle-hardfloat ]] ; then
+        export TARGET_ARCH=mipsle
+        export TARGET_ARM=hardfloat
+    fi
+    
+    ## Support for mips softfloat builds
+    if [[ $arch == mips-softfloat ]] ; then
+        export TARGET_ARCH=mips
+        export TARGET_ARM=softfloat
+    fi
+    
+    ## Support for mips hardfloat builds
+    if [[ $arch == mips-hardfloat ]] ; then
+        export TARGET_ARCH=mips
+        export TARGET_ARM=hardfloat
+    fi
+    
+    ## Support for mips64le builds
+    if [[ $arch == mips64le ]] ; then
+        export TARGET_ARCH=mips64le
+    fi
+    
+    ## Support for mips64 builds
+    if [[ $arch == mips64 ]] ; then
+        export TARGET_ARCH=mips64
     fi
     
     make cloudflared-deb

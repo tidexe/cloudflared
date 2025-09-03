@@ -70,10 +70,22 @@ jobs:
           - os: ubuntu-latest
             target_os: linux
             target_arch: mipsle
+            target_arm: softfloat
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mipsle
+            target_arm: hardfloat
             package: deb
           - os: ubuntu-latest
             target_os: linux
             target_arch: mips
+            target_arm: softfloat
+            package: deb
+          - os: ubuntu-latest
+            target_os: linux
+            target_arch: mips
+            target_arm: hardfloat
             package: deb
           - os: ubuntu-latest
             target_os: linux

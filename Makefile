@@ -113,6 +113,10 @@ endif
 
 ifeq ($(TARGET_ARM), 7) 
 	PACKAGE_ARCH := armhf
+else ifeq ($(TARGET_ARM), softfloat)
+	PACKAGE_ARCH := $(TARGET_ARCH)-softfloat
+else ifeq ($(TARGET_ARM), hardfloat)
+	PACKAGE_ARCH := $(TARGET_ARCH)-hardfloat
 else
 	PACKAGE_ARCH := $(TARGET_ARCH)
 endif
