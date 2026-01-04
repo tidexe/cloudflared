@@ -1,0 +1,60 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    if: ${{ github.repository != 'cloudflare/cloudflared' }} # Prevent running on upstream
+
+    steps:
+    - name: Checkout target branch
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: master
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Sync upstream changes
+      id: sync
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        
+        # Add upstream remote
+        git remote add upstream https://github.com/cloudflare/cloudflared.git || git remote set-url upstream https://github.com/cloudflare/cloudflared.git
+        
+        # Fetch and Merge
+        git fetch upstream
+        
+        # Try to merge upstream/master into local master
+        # Using --no-edit to accept default merge message
+        git merge upstream/master --no-edit
+        
+        # Push changes
+        git push origin master
+
+    - name: Notify on failure
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { repo, owner } = context.repo;
+          try {
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title: '🚨 Upstream Sync Failed',
+              body: `The automatic sync with upstream/master failed. This usually indicates a merge conflict that requires manual resolution.\n\nWorkflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+            });
+          } catch (error) {
+            console.error('Failed to create issue:', error);
+          }
